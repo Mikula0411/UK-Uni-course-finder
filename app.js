@@ -1,11 +1,11 @@
 const grab_id = (id) => document.getElementById(id);
 
 const SUBJECT_FILES = {
-  compsci: "data/temp/computing_courses.json",
-  engineering: "data/temp/engineering_courses.json",
-  business: "data/temp/business_courses.json",
-  law: "data/temp/law_courses.json",
-  other: "data/temp/other_courses.json",
+  compsci: "Uni subject finder/data/temp/computing_courses.json",
+  engineering: "Uni subject finder/data/temp/engineering_courses.json",
+  business: "Uni subject finder/data/temp/business_courses.json",
+  law: "Uni subject finder/data/temp/law_courses.json",
+  other: "Uni subject finder/data/temp/other_courses.json",
 };
 
 const SUBJECT_LABELS = {
@@ -318,7 +318,7 @@ async function setSubject(subjectKey) {
 
 async function init() {
   try {
-    const uniResponse = await loadJSON("data/temp/institution.json");
+    const uniResponse = await loadJSON("Uni subject finder/data/temp/institution.json");
     const uniList = uniResponse[2].data;
     universitiesById = new Map(uniList.map(u => [String(u.PUBUKPRN), u]));
 
