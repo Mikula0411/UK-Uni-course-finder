@@ -16,15 +16,63 @@ const SUBJECT_LABELS = {
   other: "Other Courses",
 };
 
-let universitiesById = new Map(); 
-let currentCourses = [];          
-let filteredCourses = [];         
-let activeSubject = "compsci";    
+let universitiesById = new Map();
+let currentCourses = [];
+let filteredCourses = [];
+let activeSubject = "compsci";
 let currentPage = 1;
 const itemsPerPage = 12;
 
 const DEBOUNCE_MS = 200;
 let debounceTimer = null;
+
+// ── Shortlist ────────────────────────────────────────────────────────────────
+// Each entry stored as { course, subjectKey } so we know the category label
+const SHORTLIST_KEY = "uni_shortlist";
+
+function loadShortlist() {
+  try { return JSON.parse(localStorage.getItem(SHORTLIST_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveShortlist(list) {
+  localStorage.setItem(SHORTLIST_KEY, JSON.stringify(list));
+}
+
+function isShortlisted(course) {
+  return loadShortlist().some(
+    e => e.course.KISCOURSEID === course.KISCOURSEID && e.course.PUBUKPRN === course.PUBUKPRN
+  );
+}
+
+function toggleShortlist(course, subjectKey) {
+  let list = loadShortlist();
+  const idx = list.findIndex(
+    e => e.course.KISCOURSEID === course.KISCOURSEID && e.course.PUBUKPRN === course.PUBUKPRN
+  );
+  if (idx === -1) {
+    list.push({ course, subjectKey });
+  } else {
+    list.splice(idx, 1);
+  }
+  saveShortlist(list);
+  updateShortlistBadge();
+  // Re-render so the heart on the current card flips immediately
+  if (activeSubject === "shortlist") {
+    showShortlistView();
+  } else {
+    updateDisplay();
+  }
+}
+
+function updateShortlistBadge() {
+  const badge = grab_id("shortlist-badge");
+  if (!badge) return;
+  const count = loadShortlist().length;
+  badge.textContent = count;
+  badge.classList.toggle("hidden", count === 0);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function loadJSON(path) {
   const res = await fetch(path);
@@ -112,54 +160,111 @@ function updateDisplay() {
   renderPaginationControls(totalPages);
 }
 
+// ── Card builder (shared by normal view + shortlist view) ────────────────────
+function buildCard(course, subjectKey) {
+  const uni = universitiesById.get(String(course.PUBUKPRN));
+  const displayTitle = course.TITLE || "Unknown Subject";
+  const displayUni = uni ? uni.LEGAL_NAME : "University Code: " + course.PUBUKPRN;
+  const hearted = isShortlisted(course);
+
+  const card = document.createElement("div");
+  card.className =
+    "card relative p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 " +
+    "dark:border-slate-800 shadow-sm hover:shadow-md transition-all cursor-pointer group";
+
+  card.innerHTML = `
+    <!-- ❤️ shortlist button -->
+    <button
+      class="shortlist-btn absolute top-4 right-4 p-1.5 rounded-full transition-all
+             ${hearted
+               ? "text-rose-500 bg-rose-50 dark:bg-rose-900/30"
+               : "text-slate-300 dark:text-slate-600 hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"}"
+      aria-label="${hearted ? "Remove from shortlist" : "Add to shortlist"}"
+      title="${hearted ? "Remove from shortlist" : "Save to shortlist"}">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24"
+           fill="${hearted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+      </svg>
+    </button>
+
+    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-indigo-600 transition-colors pr-8">
+      ${displayTitle}
+    </h3>
+    <p class="text-slate-500 dark:text-slate-400 text-sm mb-4">
+      ${displayUni}
+    </p>
+    <div class="flex items-center justify-between">
+      <span class="px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold uppercase">
+        ${SUBJECT_LABELS[subjectKey] || "General"}
+      </span>
+      <span class="text-xs font-bold text-slate-400 italic">View Details</span>
+    </div>
+  `;
+
+  // Heart button — toggle shortlist, do NOT open modal
+  card.querySelector(".shortlist-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleShortlist(course, subjectKey);
+  });
+
+  // Card body — open modal
+  card.addEventListener("click", () => openModal(course, uni));
+
+  return card;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function render(results) {
-  const el = grab_id("results-grid"); 
+  const el = grab_id("results-grid");
   if (!el) return;
-  el.innerHTML = ""; 
-  
+  el.innerHTML = "";
+
   const countEl = grab_id("results-count");
   if (countEl) {
     countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses matching your search`;
   }
 
   const frag = document.createDocumentFragment();
-
   for (const r of results) {
-    const uni = universitiesById.get(String(r.PUBUKPRN));
-    const displayTitle = r.TITLE || "Unknown Subject"; 
-    const displayUni = uni ? uni.LEGAL_NAME : 'University Code: ' + r.PUBUKPRN;
-
-    const card = document.createElement("div");
-    card.className = "card p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all cursor-pointer group";
-
-    card.innerHTML = `
-        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-indigo-600 transition-colors">
-            ${displayTitle} 
-        </h3>
-        <p class="text-slate-500 dark:text-slate-400 text-sm mb-4">
-            ${displayUni}
-        </p>
-        <div class="flex items-center justify-between">
-            <span class="px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold uppercase">
-                ${SUBJECT_LABELS[activeSubject] || "General"}
-            </span>
-            <span class="text-xs font-bold text-slate-400 italic">
-                View Details
-            </span>
-        </div>
-    `;
-
-    card.onclick = () => openModal(r, uni);
-    frag.appendChild(card);
+    frag.appendChild(buildCard(r, activeSubject));
   }
-  el.appendChild(frag); 
+  el.appendChild(frag);
 }
 
-function openModal(course, uni) {
+// ── Shortlist view ───────────────────────────────────────────────────────────
+function showShortlistView() {
+  const el = grab_id("results-grid");
+  if (!el) return;
+  el.innerHTML = "";
+
+  // Hide pagination — shortlist is never paginated
+  const pag = grab_id("pagination-controls");
+  if (pag) pag.innerHTML = "";
+
+  const list = loadShortlist();
+  const countEl = grab_id("results-count");
+
+  if (list.length === 0) {
+    if (countEl) countEl.textContent = "Your shortlist is empty — click ❤️ on any course to save it.";
+    return;
+  }
+
+  if (countEl) countEl.textContent = `${list.length} course${list.length === 1 ? "" : "s"} saved to your shortlist`;
+
+  const frag = document.createDocumentFragment();
+  for (const { course, subjectKey } of list) {
+    frag.appendChild(buildCard(course, subjectKey));
+  }
+  el.appendChild(frag);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.openModal = function openModal(course, uni) {
     const modal = grab_id("course-modal");
     const content = grab_id("modal-content");
     const displayUni = uni ? uni.LEGAL_NAME : 'University Code: ' + course.PUBUKPRN;
-    
+
     const foundationText = (course.FOUNDATION === "1" || course.FOUNDATION === "2") ? "Yes" : "No";
 
     let studyMode = "Unknown";
@@ -180,9 +285,8 @@ function openModal(course, uni) {
                     ${similar.map((s, index) => {
                         const otherUni = universitiesById.get(String(s.PUBUKPRN));
                         const otherUniName = otherUni ? otherUni.LEGAL_NAME : "Other University";
-                        
                         return `
-                        <div onclick="event.stopPropagation(); closeModal(); setTimeout(() => openModal(${JSON.stringify(s).replace(/"/g, '&quot;')}, universitiesById.get('${s.PUBUKPRN}')), 100)" 
+                        <div onclick="event.stopPropagation(); closeModal(); setTimeout(() => openModal(${JSON.stringify(s).replace(/"/g, '&quot;')}, universitiesById.get('${s.PUBUKPRN}')), 100)"
                              class="flex items-center gap-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition-all border border-transparent hover:border-indigo-200 group">
                             <span class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
                                 ${index + 1}
@@ -204,7 +308,7 @@ function openModal(course, uni) {
         <div class="space-y-6">
             <div>
                 <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
-                    ${SUBJECT_LABELS[activeSubject]}
+                    ${SUBJECT_LABELS[activeSubject] || "Saved"}
                 </span>
                 <h2 id="modal-title" class="text-3xl font-extrabold text-slate-900 dark:text-white mt-2 leading-tight">
                     ${course.TITLE}
@@ -225,14 +329,14 @@ function openModal(course, uni) {
                     <p class="text-xs text-slate-400 font-bold uppercase mb-1">Course ID</p>
                     <p class="text-slate-900 dark:text-white font-medium">${course.KISCOURSEID || "N/A"}</p>
                 </div>
-                 <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-center">
+                <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-center">
                     <p class="text-xs text-slate-400 font-bold uppercase mb-1">Provider Code (UKPRN)</p>
                     <p class="text-slate-900 dark:text-white font-medium">${course.PUBUKPRN}</p>
                 </div>
             </div>
 
             <div class="pt-4 flex flex-col sm:flex-row gap-3">
-                <button onclick="window.open('${course.ASSURL !== "#" ? course.ASSURL : `https://www.google.com/search?q=${encodeURIComponent(course.TITLE + ' at ' + displayUni)}`}', '_blank')" 
+                <button onclick="window.open('${course.ASSURL !== "#" ? course.ASSURL : `https://www.google.com/search?q=${encodeURIComponent(course.TITLE + ' at ' + displayUni)}`}', '_blank')"
                     class="flex-1 px-6 py-4 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20">
                     Visit Official Course Website
                     <i data-lucide="external-link" class="w-4 h-4"></i>
@@ -246,12 +350,12 @@ function openModal(course, uni) {
     modal.classList.remove("hidden");
     document.body.style.overflow = 'hidden';
     if (window.lucide) window.lucide.createIcons();
-}
+};
 
-function closeModal() {
+window.closeModal = function closeModal() {
     grab_id("course-modal").classList.add("hidden");
     document.body.style.overflow = 'auto';
-}
+};
 
 window.onkeydown = (e) => { if (e.key === "Escape") closeModal(); };
 
@@ -307,10 +411,18 @@ window.jumpToPage = (page) => {
 };
 
 async function setSubject(subjectKey) {
+  if (subjectKey === "shortlist") {
+    activeSubject = "shortlist";
+    currentCourses = [];
+    filteredCourses = [];
+    showShortlistView();
+    return;
+  }
+
   activeSubject = subjectKey;
   try {
     currentCourses = await loadJSON(SUBJECT_FILES[subjectKey]);
-    search(); 
+    search();
   } catch (e) {
     console.error("Subject load error:", e);
   }
@@ -327,26 +439,62 @@ async function init() {
     const filters = grab_id("category-filters");
     if (filters) {
       filters.innerHTML = "";
+
+      // ── Regular subject chips ──────────────────────────────────────
       Object.keys(SUBJECT_LABELS).forEach(key => {
-          const btn = document.createElement("button");
-          btn.className = `chip whitespace-nowrap px-4 py-2 rounded-xl text-sm font-bold transition-all ${key === activeSubject ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-500 hover:text-white'}`;
-          btn.textContent = SUBJECT_LABELS[key];
-          btn.onclick = () => {
-              document.querySelectorAll('.chip').forEach(c => {
-                c.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-500/30');
-                c.classList.add('bg-slate-100', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-400', 'hover:bg-indigo-500', 'hover:text-white');
-              });
-          btn.classList.remove('bg-slate-100', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-400', 'hover:bg-indigo-500', 'hover:text-white');
-          btn.classList.add('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-500/30');
+        const btn = document.createElement("button");
+        btn.className = `chip whitespace-nowrap px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+          key === activeSubject
+            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30"
+            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-500 hover:text-white"
+        }`;
+        btn.textContent = SUBJECT_LABELS[key];
+        btn.onclick = () => {
+          document.querySelectorAll(".chip").forEach(c => {
+            c.classList.remove("bg-indigo-600", "text-white", "shadow-lg", "shadow-indigo-500/30");
+            c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400", "hover:bg-indigo-500", "hover:text-white");
+          });
+          btn.classList.remove("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400", "hover:bg-indigo-500", "hover:text-white");
+          btn.classList.add("bg-indigo-600", "text-white", "shadow-lg", "shadow-indigo-500/30");
           setSubject(key);
-          };
-          filters.appendChild(btn);
+        };
+        filters.appendChild(btn);
       });
+
+      // ── Shortlist chip (rose coloured, with count badge) ───────────
+      const shortlistBtn = document.createElement("button");
+      shortlistBtn.id = "shortlist-chip";
+      shortlistBtn.className =
+        "chip relative whitespace-nowrap px-4 py-2 rounded-xl text-sm font-bold transition-all " +
+        "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-rose-500 hover:text-white flex items-center gap-2";
+      shortlistBtn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24"
+             fill="currentColor" stroke="currentColor" stroke-width="0">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+        </svg>
+        Shortlist
+        <span id="shortlist-badge"
+          class="hidden min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+          0
+        </span>
+      `;
+      shortlistBtn.onclick = () => {
+        document.querySelectorAll(".chip").forEach(c => {
+          c.classList.remove("bg-indigo-600", "bg-rose-500", "text-white", "shadow-lg", "shadow-indigo-500/30", "shadow-rose-500/30");
+          c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
+        });
+        shortlistBtn.classList.remove("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
+        shortlistBtn.classList.add("bg-rose-500", "text-white", "shadow-lg", "shadow-rose-500/30");
+        setSubject("shortlist");
+      };
+      filters.appendChild(shortlistBtn);
     }
 
+    updateShortlistBadge();
     await setSubject("compsci");
     if (window.lucide) window.lucide.createIcons();
-    
+
   } catch (err) {
     console.error("Critical Init Error:", err);
   }
