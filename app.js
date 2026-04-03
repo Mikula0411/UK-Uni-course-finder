@@ -30,15 +30,18 @@ let debounceTimer = null;
 // "all" | "1" (full-time) | "2" (part-time) | "3" (both)
 let activeModeFilter = "all";
 
-const MODE_LABELS = {
-  all: "All Modes",
-  "1": "Full-time",
-  "2": "Part-time",
-  "3": "Both",
-};
+// "all" | "1" (full-time) | "2" (part-time)
+// Note: "3" (Both) is excluded from the UI — users filter by what they need
+const MODE_OPTIONS = [
+  { key: "all", label: "All" },
+  { key: "1",   label: "Full-time" },
+  { key: "2",   label: "Part-time" },
+];
 
 function matchesMode(course) {
   if (activeModeFilter === "all") return true;
+  // KISMODE "3" means the course offers both modes — include it in both FT and PT results
+  if (String(course.KISMODE) === "3") return true;
   return String(course.KISMODE) === activeModeFilter;
 }
 
@@ -47,14 +50,23 @@ function renderModeFilters() {
   if (!container) return;
   container.innerHTML = "";
 
-  Object.entries(MODE_LABELS).forEach(([key, label]) => {
+  // Segmented control wrapper
+  const group = document.createElement("div");
+  group.className =
+    "inline-flex rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700";
+
+  MODE_OPTIONS.forEach(({ key, label }, i) => {
     const btn = document.createElement("button");
     const isActive = key === activeModeFilter;
+    const isFirst = i === 0;
+    const isLast  = i === MODE_OPTIONS.length - 1;
+
     btn.className =
-      "mode-chip whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all " +
+      "mode-chip px-4 py-1.5 text-xs font-bold transition-all " +
+      (!isFirst ? "border-l border-slate-200 dark:border-slate-700 " : "") +
       (isActive
-        ? "bg-violet-600 text-white shadow shadow-violet-500/30"
-        : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-violet-500 hover:text-white");
+        ? "bg-violet-600 text-white"
+        : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:text-violet-600 dark:hover:text-violet-400");
     btn.textContent = label;
     btn.onclick = () => {
       activeModeFilter = key;
@@ -66,8 +78,10 @@ function renderModeFilters() {
         search();
       }
     };
-    container.appendChild(btn);
+    group.appendChild(btn);
   });
+
+  container.appendChild(group);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
