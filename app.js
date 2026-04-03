@@ -26,8 +26,52 @@ const itemsPerPage = 12;
 const DEBOUNCE_MS = 200;
 let debounceTimer = null;
 
+// ── Study mode filter ────────────────────────────────────────────────────────
+// "all" | "1" (full-time) | "2" (part-time) | "3" (both)
+let activeModeFilter = "all";
+
+const MODE_LABELS = {
+  all: "All Modes",
+  "1": "Full-time",
+  "2": "Part-time",
+  "3": "Both",
+};
+
+function matchesMode(course) {
+  if (activeModeFilter === "all") return true;
+  return String(course.KISMODE) === activeModeFilter;
+}
+
+function renderModeFilters() {
+  const container = grab_id("mode-filters");
+  if (!container) return;
+  container.innerHTML = "";
+
+  Object.entries(MODE_LABELS).forEach(([key, label]) => {
+    const btn = document.createElement("button");
+    const isActive = key === activeModeFilter;
+    btn.className =
+      "mode-chip whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all " +
+      (isActive
+        ? "bg-violet-600 text-white shadow shadow-violet-500/30"
+        : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-violet-500 hover:text-white");
+    btn.textContent = label;
+    btn.onclick = () => {
+      activeModeFilter = key;
+      renderModeFilters();
+      currentPage = 1;
+      if (activeSubject === "shortlist") {
+        showShortlistView();
+      } else {
+        search();
+      }
+    };
+    container.appendChild(btn);
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── Shortlist ────────────────────────────────────────────────────────────────
-// Each entry stored as { course, subjectKey } so we know the category label
 const SHORTLIST_KEY = "uni_shortlist";
 
 function loadShortlist() {
@@ -57,7 +101,6 @@ function toggleShortlist(course, subjectKey) {
   }
   saveShortlist(list);
   updateShortlistBadge();
-  // Re-render so the heart on the current card flips immediately
   if (activeSubject === "shortlist") {
     showShortlistView();
   } else {
@@ -137,6 +180,7 @@ function search() {
     const terms = query.split(/\s+/).filter(t => t.length > 0);
 
     const scored = currentCourses
+      .filter(c => matchesMode(c))                              // ← mode filter
       .map(c => ({ course: c, score: scoreMatch(c, terms) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score);
@@ -160,7 +204,7 @@ function updateDisplay() {
   renderPaginationControls(totalPages);
 }
 
-// ── Card builder (shared by normal view + shortlist view) ────────────────────
+// ── Card builder (shared by normal + shortlist view) ─────────────────────────
 function buildCard(course, subjectKey) {
   const uni = universitiesById.get(String(course.PUBUKPRN));
   const displayTitle = course.TITLE || "Unknown Subject";
@@ -173,7 +217,6 @@ function buildCard(course, subjectKey) {
     "dark:border-slate-800 shadow-sm hover:shadow-md transition-all cursor-pointer group";
 
   card.innerHTML = `
-    <!-- ❤️ shortlist button -->
     <button
       class="shortlist-btn absolute top-4 right-4 p-1.5 rounded-full transition-all
              ${hearted
@@ -196,21 +239,18 @@ function buildCard(course, subjectKey) {
     </p>
     <div class="flex items-center justify-between">
       <span class="px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold uppercase">
-        ${SUBJECT_LABELS[subjectKey] || "General"}
+        ${SUBJECT_LABELS[subjectKey] || "Saved"}
       </span>
       <span class="text-xs font-bold text-slate-400 italic">View Details</span>
     </div>
   `;
 
-  // Heart button — toggle shortlist, do NOT open modal
   card.querySelector(".shortlist-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     toggleShortlist(course, subjectKey);
   });
 
-  // Card body — open modal
   card.addEventListener("click", () => openModal(course, uni));
-
   return card;
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,19 +278,25 @@ function showShortlistView() {
   if (!el) return;
   el.innerHTML = "";
 
-  // Hide pagination — shortlist is never paginated
   const pag = grab_id("pagination-controls");
   if (pag) pag.innerHTML = "";
 
-  const list = loadShortlist();
+  const full = loadShortlist();
+  const list = full.filter(({ course }) => matchesMode(course));
   const countEl = grab_id("results-count");
 
-  if (list.length === 0) {
+  if (full.length === 0) {
     if (countEl) countEl.textContent = "Your shortlist is empty — click ❤️ on any course to save it.";
     return;
   }
 
-  if (countEl) countEl.textContent = `${list.length} course${list.length === 1 ? "" : "s"} saved to your shortlist`;
+  if (countEl) {
+    countEl.textContent = list.length === full.length
+      ? `${list.length} course${list.length === 1 ? "" : "s"} saved to your shortlist`
+      : `${list.length} of ${full.length} shortlisted courses match the current mode filter`;
+  }
+
+  if (list.length === 0) return;
 
   const frag = document.createDocumentFragment();
   for (const { course, subjectKey } of list) {
@@ -418,7 +464,6 @@ async function setSubject(subjectKey) {
     showShortlistView();
     return;
   }
-
   activeSubject = subjectKey;
   try {
     currentCourses = await loadJSON(SUBJECT_FILES[subjectKey]);
@@ -440,7 +485,7 @@ async function init() {
     if (filters) {
       filters.innerHTML = "";
 
-      // ── Regular subject chips ──────────────────────────────────────
+      // Subject chips
       Object.keys(SUBJECT_LABELS).forEach(key => {
         const btn = document.createElement("button");
         btn.className = `chip whitespace-nowrap px-4 py-2 rounded-xl text-sm font-bold transition-all ${
@@ -451,17 +496,17 @@ async function init() {
         btn.textContent = SUBJECT_LABELS[key];
         btn.onclick = () => {
           document.querySelectorAll(".chip").forEach(c => {
-            c.classList.remove("bg-indigo-600", "text-white", "shadow-lg", "shadow-indigo-500/30");
-            c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400", "hover:bg-indigo-500", "hover:text-white");
+            c.classList.remove("bg-indigo-600", "bg-rose-500", "text-white", "shadow-lg", "shadow-indigo-500/30", "shadow-rose-500/30");
+            c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
           });
-          btn.classList.remove("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400", "hover:bg-indigo-500", "hover:text-white");
+          btn.classList.remove("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
           btn.classList.add("bg-indigo-600", "text-white", "shadow-lg", "shadow-indigo-500/30");
           setSubject(key);
         };
         filters.appendChild(btn);
       });
 
-      // ── Shortlist chip (rose coloured, with count badge) ───────────
+      // Shortlist chip
       const shortlistBtn = document.createElement("button");
       shortlistBtn.id = "shortlist-chip";
       shortlistBtn.className =
@@ -470,8 +515,7 @@ async function init() {
       shortlistBtn.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24"
              fill="currentColor" stroke="currentColor" stroke-width="0">
-          <path stroke-linecap="round" stroke-linejoin="round"
-            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+          <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
         </svg>
         Shortlist
         <span id="shortlist-badge"
@@ -491,6 +535,7 @@ async function init() {
       filters.appendChild(shortlistBtn);
     }
 
+    renderModeFilters();
     updateShortlistBadge();
     await setSubject("compsci");
     if (window.lucide) window.lucide.createIcons();
