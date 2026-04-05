@@ -224,11 +224,23 @@ function buildCard(course, subjectKey) {
   const displayTitle = course.TITLE || "Unknown Subject";
   const displayUni = uni ? uni.LEGAL_NAME : "University Code: " + course.PUBUKPRN;
   const hearted = isShortlisted(course);
+  const hasFoundation = course.FOUNDATION === "1" || course.FOUNDATION === "2";
 
   const card = document.createElement("div");
   card.className =
     "card relative p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 " +
     "dark:border-slate-800 shadow-sm hover:shadow-md transition-all cursor-pointer group";
+
+  const foundationBadge = hasFoundation
+    ? `<div class="mb-3">
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wide">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+          </svg>
+          Foundation Year
+        </span>
+      </div>`
+    : `<div class="mb-3"></div>`;
 
   card.innerHTML = `
     <button
@@ -248,9 +260,12 @@ function buildCard(course, subjectKey) {
     <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-indigo-600 transition-colors pr-8">
       ${displayTitle}
     </h3>
-    <p class="text-slate-500 dark:text-slate-400 text-sm mb-4">
+    <p class="text-slate-500 dark:text-slate-400 text-sm mb-3">
       ${displayUni}
     </p>
+
+    ${foundationBadge}
+
     <div class="flex items-center justify-between">
       <span class="px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold uppercase">
         ${SUBJECT_LABELS[subjectKey] || "Saved"}
