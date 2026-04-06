@@ -616,6 +616,7 @@ async function init() {
     }
 
     renderModeFilters();
+    renderFoundationFilters();
     updateShortlistBadge();
     await setSubject("compsci");
     if (window.lucide) window.lucide.createIcons();
