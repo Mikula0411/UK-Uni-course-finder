@@ -27,8 +27,58 @@ const DEBOUNCE_MS = 200;
 let debounceTimer = null;
 
 // ── Study mode filter ────────────────────────────────────────────────────────
-// "all" | "1" (full-time) | "2" (part-time) | "3" (both)
 let activeModeFilter = "all";
+
+// ── Foundation year filter ───────────────────────────────────────────────────
+// "all" | "yes" | "no"
+let activeFoundationFilter = "all";
+
+const FOUNDATION_OPTIONS = [
+  { key: "all", label: "All" },
+  { key: "yes", label: "Yes" },
+  { key: "no",  label: "No" },
+];
+
+function matchesFoundation(course) {
+  if (activeFoundationFilter === "all") return true;
+  const has = course.FOUNDATION === "1" || course.FOUNDATION === "2";
+  return activeFoundationFilter === "yes" ? has : !has;
+}
+
+function renderFoundationFilters() {
+  const container = grab_id("foundation-filters");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const group = document.createElement("div");
+  group.className =
+    "inline-flex rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700";
+
+  FOUNDATION_OPTIONS.forEach(({ key, label }, i) => {
+    const btn = document.createElement("button");
+    const isActive = key === activeFoundationFilter;
+    btn.className =
+      "foundation-chip px-4 py-1.5 text-xs font-bold transition-all " +
+      (i > 0 ? "border-l border-slate-200 dark:border-slate-700 " : "") +
+      (isActive
+        ? "bg-emerald-600 text-white"
+        : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 dark:hover:text-emerald-400");
+    btn.textContent = label;
+    btn.onclick = () => {
+      activeFoundationFilter = key;
+      renderFoundationFilters();
+      currentPage = 1;
+      if (activeSubject === "shortlist") {
+        showShortlistView();
+      } else {
+        search();
+      }
+    };
+    group.appendChild(btn);
+  });
+
+  container.appendChild(group);
+}
 
 // "all" | "1" (full-time) | "2" (part-time)
 // Note: "3" (Both) is excluded from the UI — users filter by what they need
@@ -71,6 +121,7 @@ function renderModeFilters() {
     btn.onclick = () => {
       activeModeFilter = key;
       renderModeFilters();
+    renderFoundationFilters();
       currentPage = 1;
       if (activeSubject === "shortlist") {
         showShortlistView();
@@ -194,7 +245,7 @@ function search() {
     const terms = query.split(/\s+/).filter(t => t.length > 0);
 
     const scored = currentCourses
-      .filter(c => matchesMode(c))                              // ← mode filter
+      .filter(c => matchesMode(c) && matchesFoundation(c))     // ← mode + foundation filters
       .map(c => ({ course: c, score: scoreMatch(c, terms) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score);
@@ -311,7 +362,7 @@ function showShortlistView() {
   if (pag) pag.innerHTML = "";
 
   const full = loadShortlist();
-  const list = full.filter(({ course }) => matchesMode(course));
+  const list = full.filter(({ course }) => matchesMode(course) && matchesFoundation(course));
   const countEl = grab_id("results-count");
 
   if (full.length === 0) {
