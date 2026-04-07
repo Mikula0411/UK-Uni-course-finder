@@ -67,6 +67,7 @@ function renderFoundationFilters() {
     btn.onclick = () => {
       activeFoundationFilter = key;
       renderFoundationFilters();
+      updateClearBtn();
       currentPage = 1;
       if (activeSubject === "shortlist") {
         showShortlistView();
@@ -95,6 +96,27 @@ function matchesMode(course) {
   return String(course.KISMODE) === activeModeFilter;
 }
 
+window.clearFilters = function clearFilters() {
+  activeModeFilter = "all";
+  activeFoundationFilter = "all";
+  renderModeFilters();
+  renderFoundationFilters();
+  updateClearBtn();
+  currentPage = 1;
+  if (activeSubject === "shortlist") {
+    showShortlistView();
+  } else {
+    search();
+  }
+};
+
+function updateClearBtn() {
+  const btn = grab_id("clear-filters-btn");
+  if (!btn) return;
+  const isActive = activeModeFilter !== "all" || activeFoundationFilter !== "all";
+  btn.classList.toggle("hidden", !isActive);
+}
+
 function renderModeFilters() {
   const container = grab_id("mode-filters");
   if (!container) return;
@@ -121,7 +143,7 @@ function renderModeFilters() {
     btn.onclick = () => {
       activeModeFilter = key;
       renderModeFilters();
-    renderFoundationFilters();
+      updateClearBtn();
       currentPage = 1;
       if (activeSubject === "shortlist") {
         showShortlistView();
@@ -617,6 +639,7 @@ async function init() {
 
     renderModeFilters();
     renderFoundationFilters();
+    updateClearBtn();
     updateShortlistBadge();
     await setSubject("compsci");
     if (window.lucide) window.lucide.createIcons();
