@@ -343,8 +343,6 @@ function search() {
 
     filteredCourses = scored.map(({ course }) => course);
     currentPage = 1;
-    // Save non-trivial queries to history
-    if (query.length >= 2) saveToHistory(query);
     updateDisplay();
   }, DEBOUNCE_MS);
 }
@@ -705,6 +703,16 @@ async function init() {
     searchInput.addEventListener("input", search);
     searchInput.addEventListener("focus", () => {
       if (!searchInput.value.trim()) showHistoryDropdown();
+    });
+    // Save to history only on Enter key
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const q = searchInput.value.trim();
+        if (q.length >= 2) {
+          saveToHistory(q);
+          hideHistoryDropdown();
+        }
+      }
     });
     // Hide dropdown when clicking outside
     document.addEventListener("click", (e) => {
