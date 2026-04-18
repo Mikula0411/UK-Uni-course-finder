@@ -51,12 +51,16 @@
             </div>
 
             <div class="p-4 rounded-3xl border bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-800">
-                <!-- Search bar -->
-                <div class="relative mb-4 flex gap-2">
+                <!-- Search bar with history dropdown -->
+                <div class="relative mb-4" id="search-history-wrapper">
                     <div class="relative flex-1">
                         <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6"></i>
                         <input type="text" id="search-input" placeholder="Search courses..."
                             class="w-full pl-12 pr-4 py-4 rounded-2xl outline-none border focus:border-indigo-500/75 bg-slate-50 dark:bg-slate-800 dark:text-white border-transparent">
+                    </div>
+                    <!-- Search history dropdown -->
+                    <div id="search-history-dropdown"
+                        class="hidden absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-lg overflow-hidden py-1">
                     </div>
                 </div>
 
@@ -103,7 +107,7 @@
     </div>
 
     <footer class="mt-20 py-12 border-t border-slate-200 dark:border-slate-800">
-        <div class="max-w-6xl mx-auto px-4 flex justify-between items-center">
+        <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <p class="text-slate-500 font-bold text-sm">Uni Subject Finder 2026</p>
             <p class="text-slate-400 text-xs text-center sm:text-right max-w-sm">
                 ⚠️ Course data is sourced from HESA and may not reflect the latest availability. Some course links may be outdated or unavailable — always verify directly with the university.

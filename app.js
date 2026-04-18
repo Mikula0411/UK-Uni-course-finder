@@ -259,6 +259,75 @@ function scoreMatch(course, terms) {
   return score;
 }
 
+// ── Search history ───────────────────────────────────────────────────────────
+const HISTORY_KEY = "uni_search_history";
+const MAX_HISTORY = 5;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveToHistory(query) {
+  if (!query || query.length < 2) return;
+  let history = loadHistory();
+  // Remove duplicate if exists, then prepend
+  history = history.filter(h => h !== query);
+  history.unshift(query);
+  // Keep only last MAX_HISTORY items
+  history = history.slice(0, MAX_HISTORY);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function applyHistorySearch(query) {
+  const input = grab_id("search-input");
+  if (!input) return;
+  input.value = query;
+  hideHistoryDropdown();
+  search();
+}
+window.applyHistorySearch = applyHistorySearch;
+
+function clearHistory() {
+  localStorage.removeItem(HISTORY_KEY);
+  hideHistoryDropdown();
+}
+window.clearHistory = clearHistory;
+
+function showHistoryDropdown() {
+  const history = loadHistory();
+  const dropdown = grab_id("search-history-dropdown");
+  if (!dropdown) return;
+
+  if (history.length === 0) {
+    hideHistoryDropdown();
+    return;
+  }
+
+  dropdown.innerHTML = `
+    <div class="flex items-center justify-between px-3 pt-2 pb-1">
+      <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Recent searches</span>
+      <button onclick="clearHistory()" class="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-colors">Clear all</button>
+    </div>
+    ${history.map(q => `
+      <button onclick="applyHistorySearch('${q.replace(/'/g, "\'")}')"
+        class="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 flex items-center gap-2 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        ${q}
+      </button>
+    `).join('')}
+  `;
+  dropdown.classList.remove("hidden");
+}
+
+function hideHistoryDropdown() {
+  const dropdown = grab_id("search-history-dropdown");
+  if (dropdown) dropdown.classList.add("hidden");
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function search() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
@@ -274,6 +343,8 @@ function search() {
 
     filteredCourses = scored.map(({ course }) => course);
     currentPage = 1;
+    // Save non-trivial queries to history
+    if (query.length >= 2) saveToHistory(query);
     updateDisplay();
   }, DEBOUNCE_MS);
 }
@@ -630,7 +701,16 @@ async function init() {
     const uniList = uniResponse[2].data;
     universitiesById = new Map(uniList.map(u => [String(u.PUBUKPRN), u]));
 
-    grab_id("search-input").addEventListener("input", search);
+    const searchInput = grab_id("search-input");
+    searchInput.addEventListener("input", search);
+    searchInput.addEventListener("focus", () => {
+      if (!searchInput.value.trim()) showHistoryDropdown();
+    });
+    // Hide dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      const wrapper = grab_id("search-history-wrapper");
+      if (wrapper && !wrapper.contains(e.target)) hideHistoryDropdown();
+    });
 
     const filters = grab_id("category-filters");
     if (filters) {
