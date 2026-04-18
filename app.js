@@ -20,6 +20,7 @@ let universitiesById = new Map();
 let currentCourses = [];
 let filteredCourses = [];
 let activeSubject = "compsci";
+let activeUniversity = null; // { ukprn, name } when viewing a university
 let currentPage = 1;
 const itemsPerPage = 12;
 
@@ -259,6 +260,89 @@ function scoreMatch(course, terms) {
   return score;
 }
 
+// ── University view ─────────────────────────────────────────────────────────
+async function viewUniversity(ukprn) {
+  const uni = universitiesById.get(String(ukprn));
+  if (!uni) return;
+
+  activeUniversity = { ukprn: String(ukprn), name: uni.LEGAL_NAME };
+  activeSubject = "university";
+
+  // Deactivate all subject chips
+  document.querySelectorAll(".chip").forEach(c => {
+    c.classList.remove("bg-indigo-600", "bg-rose-500", "text-white", "shadow-lg", "shadow-indigo-500/30", "shadow-rose-500/30");
+    c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
+  });
+
+  // Show banner
+  showUniversityBanner(uni.LEGAL_NAME);
+  showSpinner();
+
+  // Load all 5 subject files in parallel, filter to this UKPRN
+  try {
+    const allFiles = await Promise.all(Object.values(SUBJECT_FILES).map(loadJSON));
+    currentCourses = allFiles.flat().filter(c => String(c.PUBUKPRN) === String(ukprn));
+    filteredCourses = currentCourses.filter(c => matchesMode(c) && matchesFoundation(c));
+    currentPage = 1;
+
+    const countEl = grab_id("results-count");
+    if (countEl) countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses at ${uni.LEGAL_NAME}`;
+
+    updateDisplay();
+  } catch (e) {
+    console.error("University load error:", e);
+  }
+}
+window.viewUniversity = viewUniversity;
+
+function showUniversityBanner(name) {
+  let banner = grab_id("university-banner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "university-banner";
+    const grid = grab_id("results-grid");
+    if (grid) grid.before(banner);
+  }
+  banner.className = "flex items-center justify-between px-4 py-3 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 mb-2";
+  banner.innerHTML = `
+    <div class="flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21"/>
+      </svg>
+      <span class="text-sm font-bold text-indigo-700 dark:text-indigo-300">All courses at ${name}</span>
+    </div>
+    <button onclick="exitUniversityView()" class="text-xs font-bold text-indigo-400 hover:text-rose-500 transition-colors flex items-center gap-1">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+      Exit
+    </button>
+  `;
+}
+
+function exitUniversityView() {
+  activeUniversity = null;
+
+  // Remove banner
+  const banner = grab_id("university-banner");
+  if (banner) banner.remove();
+
+  // Restore Computing as default and reactivate its chip
+  const chips = document.querySelectorAll(".chip");
+  chips.forEach(c => {
+    c.classList.remove("bg-indigo-600", "bg-rose-500", "text-white", "shadow-lg", "shadow-indigo-500/30", "shadow-rose-500/30");
+    c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
+  });
+  if (chips[0]) {
+    chips[0].classList.remove("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
+    chips[0].classList.add("bg-indigo-600", "text-white", "shadow-lg", "shadow-indigo-500/30");
+  }
+
+  setSubject("compsci");
+}
+window.exitUniversityView = exitUniversityView;
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── Search history ───────────────────────────────────────────────────────────
 const HISTORY_KEY = "uni_search_history";
 const MAX_HISTORY = 5;
@@ -403,7 +487,9 @@ function buildCard(course, subjectKey) {
       ${displayTitle}
     </h3>
     <p class="text-slate-500 dark:text-slate-400 text-sm mb-3">
-      ${displayUni}
+      <button class="uni-name-btn hover:text-indigo-500 transition-colors text-left" title="View all courses at ${displayUni}">
+        ${displayUni}
+      </button>
     </p>
 
     ${foundationBadge}
@@ -419,6 +505,12 @@ function buildCard(course, subjectKey) {
   card.querySelector(".shortlist-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     toggleShortlist(course, subjectKey);
+  });
+
+  card.querySelector(".uni-name-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeModal();
+    viewUniversity(course.PUBUKPRN);
   });
 
   card.addEventListener("click", () => openModal(course, uni));
@@ -576,7 +668,11 @@ window.openModal = function openModal(course, uni) {
                 <h2 id="modal-title" class="text-3xl font-extrabold text-slate-900 dark:text-white mt-2 leading-tight">
                     ${course.TITLE}
                 </h2>
-                <p class="text-lg text-slate-500 dark:text-slate-400 mt-2">${displayUni}</p>
+                <button onclick="closeModal(); viewUniversity('${course.PUBUKPRN}')" 
+                    class="text-lg text-slate-500 dark:text-slate-400 mt-2 hover:text-indigo-500 transition-colors block text-left" 
+                    title="View all courses at ${displayUni}">
+                    ${displayUni}
+                </button>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
