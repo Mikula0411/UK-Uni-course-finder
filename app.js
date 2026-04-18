@@ -357,10 +357,56 @@ function buildCard(course, subjectKey) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Spinner & empty state ────────────────────────────────────────────────────
+function showSpinner() {
+  const el = grab_id("results-grid");
+  if (!el) return;
+  el.innerHTML = `
+    <div class="col-span-full flex flex-col items-center justify-center py-24 gap-4">
+      <div class="w-10 h-10 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin"></div>
+      <p class="text-slate-400 text-sm font-medium">Loading courses...</p>
+    </div>
+  `;
+  const countEl = grab_id("results-count");
+  if (countEl) countEl.textContent = "";
+}
+
+function showEmptyState(query) {
+  const el = grab_id("results-grid");
+  if (!el) return;
+  const hasFilters = activeModeFilter !== "all" || activeFoundationFilter !== "all";
+  const suggestion = hasFilters
+    ? "Try clearing your filters, or use a different keyword."
+    : "Try a different keyword — for example, try a shorter or broader term.";
+  el.innerHTML = `
+    <div class="col-span-full flex flex-col items-center justify-center py-24 gap-3 text-center">
+      <div class="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
+        </svg>
+      </div>
+      <p class="text-slate-700 dark:text-slate-200 font-bold text-lg">No courses found${query ? ` for "<span class='text-indigo-500'>${query}</span>"` : ""}</p>
+      <p class="text-slate-400 text-sm max-w-xs">${suggestion}</p>
+      ${hasFilters ? `<button onclick="clearFilters()" class="mt-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all">Clear filters</button>` : ""}
+    </div>
+  `;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function render(results) {
   const el = grab_id("results-grid");
   if (!el) return;
   el.innerHTML = "";
+
+  const input = grab_id("search-input");
+  const query = input ? input.value.trim() : "";
+
+  if (results.length === 0) {
+    showEmptyState(query);
+    const countEl = grab_id("results-count");
+    if (countEl) countEl.textContent = "";
+    return;
+  }
 
   const countEl = grab_id("results-count");
   if (countEl) {
@@ -567,11 +613,14 @@ async function setSubject(subjectKey) {
     return;
   }
   activeSubject = subjectKey;
+  showSpinner();
   try {
     currentCourses = await loadJSON(SUBJECT_FILES[subjectKey]);
     search();
   } catch (e) {
     console.error("Subject load error:", e);
+    const el = grab_id("results-grid");
+    if (el) el.innerHTML = `<div class="col-span-full text-center py-24 text-slate-400 text-sm font-medium">Failed to load courses. Please refresh and try again.</div>`;
   }
 }
 
