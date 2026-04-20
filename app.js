@@ -322,24 +322,29 @@ function showUniversityBanner(name) {
 }
 
 function exitUniversityView() {
+  // Remember the subject that was active inside the university view
+  const subjectToRestore = activeSubject && SUBJECT_FILES[activeSubject] ? activeSubject : "compsci";
   activeUniversity = null;
 
   // Remove banner
   const banner = grab_id("university-banner");
   if (banner) banner.remove();
 
-  // Restore Computing as default and reactivate its chip
+  // Reactivate the correct subject chip
   const chips = document.querySelectorAll(".chip");
+  const subjectKeys = Object.keys(SUBJECT_LABELS);
   chips.forEach(c => {
     c.classList.remove("bg-indigo-600", "bg-rose-500", "text-white", "shadow-lg", "shadow-indigo-500/30", "shadow-rose-500/30");
     c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
   });
-  if (chips[0]) {
-    chips[0].classList.remove("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
-    chips[0].classList.add("bg-indigo-600", "text-white", "shadow-lg", "shadow-indigo-500/30");
+  // Find the chip matching subjectToRestore and highlight it
+  const subjectIndex = subjectKeys.indexOf(subjectToRestore);
+  if (subjectIndex !== -1 && chips[subjectIndex]) {
+    chips[subjectIndex].classList.remove("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
+    chips[subjectIndex].classList.add("bg-indigo-600", "text-white", "shadow-lg", "shadow-indigo-500/30");
   }
 
-  setSubject("compsci");
+  setSubject(subjectToRestore);
 }
 window.exitUniversityView = exitUniversityView;
 // ─────────────────────────────────────────────────────────────────────────────
