@@ -265,28 +265,29 @@ async function viewUniversity(ukprn) {
   const uni = universitiesById.get(String(ukprn));
   if (!uni) return;
 
-  activeUniversity = { ukprn: String(ukprn), name: uni.LEGAL_NAME };
-  activeSubject = "university";
+  // Remember which subject was active so we show only that category's courses
+  const subjectBeforeEntry = (activeSubject && activeSubject !== "university" && activeSubject !== "shortlist")
+    ? activeSubject
+    : "compsci";
 
-  // Deactivate all subject chips
-  document.querySelectorAll(".chip").forEach(c => {
-    c.classList.remove("bg-indigo-600", "bg-rose-500", "text-white", "shadow-lg", "shadow-indigo-500/30", "shadow-rose-500/30");
-    c.classList.add("bg-slate-100", "dark:bg-slate-800", "text-slate-600", "dark:text-slate-400");
-  });
+  activeUniversity = { ukprn: String(ukprn), name: uni.LEGAL_NAME, subject: subjectBeforeEntry };
+  activeSubject = subjectBeforeEntry;
 
-  // Show banner
+  // Keep the active chip highlighted (don't deactivate)
   showUniversityBanner(uni.LEGAL_NAME);
   showSpinner();
 
-  // Load all 5 subject files in parallel, filter to this UKPRN
   try {
-    const allFiles = await Promise.all(Object.values(SUBJECT_FILES).map(loadJSON));
-    currentCourses = allFiles.flat().filter(c => String(c.PUBUKPRN) === String(ukprn));
+    // Only load the file for the active subject category
+    const file = SUBJECT_FILES[subjectBeforeEntry];
+    const courses = await loadJSON(file);
+    currentCourses = courses.filter(c => String(c.PUBUKPRN) === String(ukprn));
     filteredCourses = currentCourses.filter(c => matchesMode(c) && matchesFoundation(c));
     currentPage = 1;
 
     const countEl = grab_id("results-count");
-    if (countEl) countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses at ${uni.LEGAL_NAME}`;
+    const catLabel = SUBJECT_LABELS[subjectBeforeEntry] ? ` in ${SUBJECT_LABELS[subjectBeforeEntry]}` : "";
+    if (countEl) countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses at ${uni.LEGAL_NAME}${catLabel}`;
 
     updateDisplay();
   } catch (e) {
@@ -571,7 +572,16 @@ function render(results) {
 
   const countEl = grab_id("results-count");
   if (countEl) {
-    countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses matching your search`;
+    const modeLabel = activeModeFilter === "1" ? "full-time" : activeModeFilter === "2" ? "part-time" : null;
+    const foundLabel = activeFoundationFilter === "yes" ? "with foundation year" : activeFoundationFilter === "no" ? "without foundation year" : null;
+    const filterParts = [modeLabel, foundLabel].filter(Boolean);
+    const filterSuffix = filterParts.length > 0 ? ` (${filterParts.join(", ")})` : "";
+    if (activeUniversity) {
+      const catLabel = SUBJECT_LABELS[activeSubject] ? ` in ${SUBJECT_LABELS[activeSubject]}` : "";
+      countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses at ${activeUniversity.name}${catLabel}${filterSuffix}`;
+    } else {
+      countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses${filterSuffix || " matching your search"}`;
+    }
   }
 
   const frag = document.createDocumentFragment();
@@ -771,12 +781,40 @@ window.jumpToPage = (page) => {
 
 async function setSubject(subjectKey) {
   if (subjectKey === "shortlist") {
+    // Exit university view cleanly if active
+    if (activeUniversity) {
+      activeUniversity = null;
+      const banner = grab_id("university-banner");
+      if (banner) banner.remove();
+    }
     activeSubject = "shortlist";
     currentCourses = [];
     filteredCourses = [];
     showShortlistView();
     return;
   }
+
+  // If in university view, reload the new subject's file filtered to this university
+  if (activeUniversity) {
+    activeSubject = subjectKey;
+    activeUniversity.subject = subjectKey;
+    showSpinner();
+    try {
+      const courses = await loadJSON(SUBJECT_FILES[subjectKey]);
+      currentCourses = courses.filter(c => String(c.PUBUKPRN) === activeUniversity.ukprn);
+      search();
+      // Update banner count label
+      const countEl = grab_id("results-count");
+      if (countEl) {
+        const catLabel = SUBJECT_LABELS[subjectKey] ? ` in ${SUBJECT_LABELS[subjectKey]}` : "";
+        countEl.textContent = `Showing ${filteredCourses.length.toLocaleString()} courses at ${activeUniversity.name}${catLabel}`;
+      }
+    } catch (e) {
+      console.error("University subject load error:", e);
+    }
+    return;
+  }
+
   activeSubject = subjectKey;
   showSpinner();
   try {
